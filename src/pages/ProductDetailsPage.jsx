@@ -109,10 +109,6 @@ export function ProductDetailsPage() {
               {product.name}
             </h1>
 
-            <p className="mt-4 text-slate-400">
-              {product.description || 'Produto disponível na loja Wantech.'}
-            </p>
-
             <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-5">
               {hasPromotion && (
                 <p className="text-sm text-slate-500 line-through">
@@ -175,6 +171,11 @@ export function ProductDetailsPage() {
                   {product.isPublished ? 'Publicado' : 'Indisponível'}
                 </strong>
               </Card>
+
+            </div>
+                        <div className="mt-4 whitespace-pre-line text-slate-400 leading-8">
+              <strong><h2>Descrição:</h2></strong>
+              {product.description || 'Produto disponível na loja Wantech.'}
             </div>
           </div>
         </div>

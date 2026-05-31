@@ -16,12 +16,15 @@ import { ClientsPage } from '../pages/admin/ClientsPage'
 import { ProductsPage } from '../pages/admin/ProductsPage'
 import { OrdersPage } from '../pages/admin/OrdersPage'
 import { PaymentsPage } from '../pages/admin/PaymentsPage'
-import { BotPage } from '../pages/admin/BotPage'
 import { SettingsPage } from '../pages/admin/SettingsPage'
 import { ProductDetailsPage } from '../pages/ProductDetailsPage'
 import { CartPage } from '../pages/CartPage'
 import { CheckoutPage } from '../pages/CheckoutPage'
 import { OrderResultPage } from '../pages/OrderResultPage'
+import { BotPage } from '../pages/admin/BotPage'
+import { IATrainingPage } from '../pages/admin/IATrainingPage'
+import { ChatRoomPage } from '../pages/admin/ChatRoomPage'
+import { ChatWorkspacePage } from '../pages/admin/ChatWorkspacePage'
 
 export function AppRouter() {
   return (
@@ -59,11 +62,15 @@ export function AppRouter() {
             <Route index element={<DashboardPage />} />
             <Route path="servicos" element={<ServiceOrdersPage />} />
             <Route path="servicos/:id" element={<ServiceOrderDetailsPage />} />
+            <Route path="servicos/:id" element={<ServiceOrderDetailsPage />} />
             <Route path="clientes" element={<ClientsPage />} />
             <Route path="produtos" element={<ProductsPage />} />
             <Route path="pedidos" element={<OrdersPage />} />
             <Route path="pagamentos" element={<PaymentsPage />} />
+            <Route path="chat" element={<ChatWorkspacePage />} />
             <Route path="bot" element={<BotPage />} />
+            <Route path="ia-training" element={<IATrainingPage />} />
+            <Route path="chat/:id" element={<ChatRoomPage />} />
             <Route path="configuracoes" element={<SettingsPage />} />
           </Route>
         </Route>

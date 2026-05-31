@@ -1,10 +1,21 @@
+/* eslint-disable no-unused-vars */
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileText, ImageIcon, Trash2, UploadCloud } from 'lucide-react'
+import {
+  CheckCircle,
+  FileText,
+  ImageIcon,
+  Search,
+  Trash2,
+  UploadCloud,
+  UserPlus,
+  X,
+} from 'lucide-react'
+
 import { Button } from '../../../components/Button'
 import { Input } from '../../../components/Input'
 import { Modal } from '../../../components/Modal'
-import { createClient } from '../../../services/clientService'
+import { createClient, listClients } from '../../../services/clientService'
 import { createDevice } from '../../../services/deviceService'
 import { listDeviceTypes } from '../../../services/deviceTypeService'
 import { createServiceOrder } from '../../../services/serviceOrderService'
@@ -41,14 +52,30 @@ function getEntityId(entity) {
   return entity?._id || entity?.id
 }
 
+function onlyNumbers(value = '') {
+  return String(value).replace(/\D/g, '')
+}
+
 function buildOrderObservations(form) {
   return [
-    form.accessories.trim() && `Acessórios recebidos: ${form.accessories.trim()}`,
-    form.physicalCondition.trim() && `Estado físico: ${form.physicalCondition.trim()}`,
-    form.observations.trim() && `Observações gerais: ${form.observations.trim()}`,
+    form.accessories?.trim() &&
+      `Acessórios recebidos: ${form.accessories.trim()}`,
+    form.physicalCondition?.trim() &&
+      `Estado físico: ${form.physicalCondition.trim()}`,
+    form.observations?.trim() &&
+      `Observações gerais: ${form.observations.trim()}`,
   ]
     .filter(Boolean)
     .join('\n\n')
+}
+
+function fillClientForm(client) {
+  return {
+    customerName: client?.name || '',
+    customerPhone: client?.phone || '',
+    customerEmail: client?.email || '',
+    customerCpf: client?.cpf || '',
+  }
 }
 
 export function CreateServiceOrderModal({ isOpen, onClose }) {
@@ -56,6 +83,8 @@ export function CreateServiceOrderModal({ isOpen, onClose }) {
 
   const [form, setForm] = useState(initialForm)
   const [files, setFiles] = useState([])
+  const [clientSearch, setClientSearch] = useState('')
+  const [selectedClient, setSelectedClient] = useState(null)
 
   const { data: deviceTypesData } = useQuery({
     queryKey: ['device-types'],
@@ -63,16 +92,51 @@ export function CreateServiceOrderModal({ isOpen, onClose }) {
     enabled: isOpen,
   })
 
+  const { data: clientsData, isLoading: isLoadingClients } = useQuery({
+    queryKey: ['clients-search', clientSearch],
+    queryFn: () =>
+      listClients({
+        limit: 8,
+        search: clientSearch.trim(),
+      }),
+    enabled: isOpen && clientSearch.trim().length >= 2 && !selectedClient,
+  })
+
   const deviceTypes = useMemo(
     () => normalizeList(deviceTypesData),
     [deviceTypesData],
   )
 
+  const clients = useMemo(() => normalizeList(clientsData), [clientsData])
+
   function updateField(field, value) {
+    if (
+      selectedClient &&
+      ['customerName', 'customerPhone', 'customerEmail', 'customerCpf'].includes(
+        field,
+      )
+    ) {
+      setSelectedClient(null)
+    }
+
     setForm((current) => ({
       ...current,
       [field]: value,
     }))
+  }
+
+  function handleSelectClient(client) {
+    setSelectedClient(client)
+    setClientSearch('')
+
+    setForm((current) => ({
+      ...current,
+      ...fillClientForm(client),
+    }))
+  }
+
+  function handleClearSelectedClient() {
+    setSelectedClient(null)
   }
 
   function resetForm() {
@@ -82,6 +146,8 @@ export function CreateServiceOrderModal({ isOpen, onClose }) {
 
     setForm(initialForm)
     setFiles([])
+    setClientSearch('')
+    setSelectedClient(null)
   }
 
   function handleFiles(event) {
@@ -113,18 +179,22 @@ export function CreateServiceOrderModal({ isOpen, onClose }) {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const clientResponse = await createClient({
-        name: form.customerName.trim(),
-        phone: form.customerPhone.trim(),
-        email: form.customerEmail.trim() || undefined,
-        cpf: form.customerCpf.trim() || undefined,
-      })
-
-      const createdClient = clientResponse?.data || clientResponse
-      const clientId = getEntityId(createdClient)
+      let clientId = getEntityId(selectedClient)
 
       if (!clientId) {
-        throw new Error('Não foi possível identificar o cliente criado.')
+        const clientResponse = await createClient({
+          name: form.customerName.trim(),
+          phone: form.customerPhone.trim(),
+          email: form.customerEmail.trim() || undefined,
+          cpf: form.customerCpf.trim() || undefined,
+        })
+
+        const createdClient = clientResponse?.data || clientResponse
+        clientId = getEntityId(createdClient)
+      }
+
+      if (!clientId) {
+        throw new Error('Não foi possível identificar o cliente.')
       }
 
       const deviceResponse = await createDevice({
@@ -156,9 +226,7 @@ export function CreateServiceOrderModal({ isOpen, onClose }) {
           ? Number(form.estimatedBudget)
           : undefined,
         diagnosis:
-          form.diagnosis.trim() ||
-          form.reportedIssue.trim() ||
-          undefined,
+          form.diagnosis.trim() || form.reportedIssue.trim() || undefined,
         technicalReport: form.technicalReport.trim() || undefined,
         observations: orderObservations || undefined,
       })
@@ -186,6 +254,7 @@ export function CreateServiceOrderModal({ isOpen, onClose }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['service-orders'] })
+      queryClient.invalidateQueries({ queryKey: ['clients'] })
       resetForm()
       onClose()
     },
@@ -206,55 +275,138 @@ export function CreateServiceOrderModal({ isOpen, onClose }) {
     createMutation.mutate()
   }
 
-  return (
+    return (
     <Modal
       title="Nova ordem de serviço"
-      description="Cadastre cliente, equipamento, informações técnicas e anexos."
+      description="Selecione um cliente existente ou cadastre um novo junto com o equipamento."
       isOpen={isOpen}
       onClose={handleClose}
     >
       <form onSubmit={handleSubmit} className="space-y-8">
         <section>
-          <h3 className="mb-4 text-lg font-bold text-white">
-            Dados do cliente
-          </h3>
+          <h3 className="mb-4 text-lg font-bold text-white">Cliente</h3>
 
-          <div className="grid gap-5 md:grid-cols-2">
-            <Input
-              placeholder="Nome do cliente"
-              value={form.customerName}
-              onChange={(event) =>
-                updateField('customerName', event.target.value)
-              }
-              required
-            />
+          {selectedClient ? (
+            <div className="rounded-3xl border border-cyan-400/20 bg-cyan-400/10 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 text-cyan-200">
+                    <CheckCircle size={18} />
+                    <strong>Cliente selecionado</strong>
+                  </div>
 
-            <Input
-              placeholder="Telefone / WhatsApp"
-              value={form.customerPhone}
-              onChange={(event) =>
-                updateField('customerPhone', event.target.value)
-              }
-              required
-            />
+                  <p className="mt-2 font-bold text-white">
+                    {selectedClient.name}
+                  </p>
 
-            <Input
-              type="email"
-              placeholder="E-mail"
-              value={form.customerEmail}
-              onChange={(event) =>
-                updateField('customerEmail', event.target.value)
-              }
-            />
+                  <p className="text-sm text-slate-300">
+                    {selectedClient.phone || '-'} •{' '}
+                    {selectedClient.email || 'sem e-mail'} • CPF:{' '}
+                    {selectedClient.cpf || '-'}
+                  </p>
+                </div>
 
-            <Input
-              placeholder="CPF"
-              value={form.customerCpf}
-              onChange={(event) =>
-                updateField('customerCpf', event.target.value)
-              }
-            />
-          </div>
+                <button
+                  type="button"
+                  onClick={handleClearSelectedClient}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-slate-300 transition hover:bg-red-400/20 hover:text-red-300"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="relative">
+                <Search
+                  size={18}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"
+                />
+
+                <Input
+                  placeholder="Buscar cliente existente por nome, telefone, e-mail ou CPF..."
+                  value={clientSearch}
+                  onChange={(event) => setClientSearch(event.target.value)}
+                  className="pl-11"
+                />
+              </div>
+
+              {clientSearch.trim().length >= 2 && (
+                <div className="mt-3 rounded-3xl border border-white/10 bg-slate-950/70 p-3">
+                  {isLoadingClients && (
+                    <p className="p-3 text-sm text-slate-500">
+                      Buscando clientes...
+                    </p>
+                  )}
+
+                  {!isLoadingClients && clients.length === 0 && (
+                    <div className="flex items-center gap-2 p-3 text-sm text-slate-500">
+                      <UserPlus size={16} />
+                      Nenhum cliente encontrado. Preencha os dados abaixo para
+                      criar um novo.
+                    </div>
+                  )}
+
+                  {!isLoadingClients &&
+                    clients.map((client) => (
+                      <button
+                        key={getEntityId(client)}
+                        type="button"
+                        onClick={() => handleSelectClient(client)}
+                        className="block w-full rounded-2xl p-3 text-left transition hover:bg-white/5"
+                      >
+                        <strong className="block text-white">
+                          {client.name}
+                        </strong>
+
+                        <span className="text-sm text-slate-400">
+                          {client.phone || '-'} •{' '}
+                          {client.email || 'sem e-mail'} • CPF:{' '}
+                          {client.cpf || '-'}
+                        </span>
+                      </button>
+                    ))}
+                </div>
+              )}
+
+              <div className="mt-5 grid gap-5 md:grid-cols-2">
+                <Input
+                  placeholder="Nome do cliente"
+                  value={form.customerName}
+                  onChange={(event) =>
+                    updateField('customerName', event.target.value)
+                  }
+                  required
+                />
+
+                <Input
+                  placeholder="Telefone / WhatsApp"
+                  value={form.customerPhone}
+                  onChange={(event) =>
+                    updateField('customerPhone', event.target.value)
+                  }
+                  required
+                />
+
+                <Input
+                  type="email"
+                  placeholder="E-mail"
+                  value={form.customerEmail}
+                  onChange={(event) =>
+                    updateField('customerEmail', event.target.value)
+                  }
+                />
+
+                <Input
+                  placeholder="CPF"
+                  value={form.customerCpf}
+                  onChange={(event) =>
+                    updateField('customerCpf', event.target.value)
+                  }
+                />
+              </div>
+            </>
+          )}
         </section>
 
         <section>
@@ -394,9 +546,7 @@ export function CreateServiceOrderModal({ isOpen, onClose }) {
         </section>
 
         <section>
-          <h3 className="mb-4 text-lg font-bold text-white">
-            Anexos da OS
-          </h3>
+          <h3 className="mb-4 text-lg font-bold text-white">Anexos da OS</h3>
 
           <label className="flex min-h-[150px] cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/[0.03] p-6 text-center transition hover:border-cyan-400/40 hover:bg-cyan-400/[0.03]">
             <UploadCloud size={36} className="text-cyan-300" />
@@ -480,12 +630,9 @@ export function CreateServiceOrderModal({ isOpen, onClose }) {
             Cancelar
           </Button>
 
-        <Button
-          type="submit"
-          disabled={createMutation.isPending}
-        >
-          {createMutation.isPending ? 'Criando OS...' : 'Criar OS'}
-        </Button>
+          <Button type="submit" disabled={createMutation.isPending}>
+            {createMutation.isPending ? 'Criando OS...' : 'Criar OS'}
+          </Button>
         </div>
       </form>
     </Modal>
